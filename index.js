@@ -1,14 +1,34 @@
+import "./global";
 import { Project, Scene3D, PhysicsLoader, THREE } from "enable3d";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
+import { SSRrPass } from "three/examples/jsm/postprocessing/SSRrPass";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { gsap } from "gsap";
+import ThreeMeshUI from "three-mesh-ui";
+
+import { ParticleEmitter } from "./ParticleEmitter";
+import { rand } from "./utils";
 
 function map(v, a, b, c, d) {
   return ((v - a) / (b - a)) * (d - c) + c;
 }
+
 function deadzone(v, z = 0.05) {
   const s = Math.sign(v);
   const av = Math.abs(v);
   v = av < z ? z : av;
   return s * map(v, z, 1, 0, 1);
 }
+
+function sleep(sec) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, sec * 1000);
+  });
+}
+
 const collisionFlags = {
   dynamic: 0,
   static: 1,
@@ -16,84 +36,257 @@ const collisionFlags = {
   ghost: 4,
 };
 
-class MainScene extends Scene3D {
-  async init() {
-    this.state = Object.preventExtensions({
-      group: null,
-      box: null,
-      obs: null,
-      resetting: false,
-      jumpWasUp: true,
+const loadModel = (() => {
+  const gltfLoader = new GLTFLoader();
+  return (model) => {
+    return new Promise((resolve) => {
+      gltfLoader.load(model, (gltf) => {
+        resolve(gltf.scene.getObjectByProperty("type", "Mesh"));
+      });
     });
-    //this.physics.debug.enable();
+  };
+})();
+
+const loadTexture = (() => {
+  const loader = new THREE.TextureLoader();
+  return (texture) => {
+    return new Promise((resolve) => {
+      loader.load(texture, resolve);
+    });
+  };
+})();
+
+class MainScene extends Scene3D {
+  async preload() {
+    this.assets = {
+      models: {
+        separator: await loadModel("separator.glb"),
+      },
+      textures: {},
+    };
   }
+
+  async init() {
+    this.state = window.state = Object.preventExtensions({
+      players: [],
+      selects: [],
+      star: null,
+      starSide: "left",
+      repositioningStar: false,
+      score: 0,
+      timeLeft: 60,
+      textBlock: null,
+      scoreText: null,
+      timeText: null,
+      gameOver: false,
+      separator: null,
+      separatorWall: null,
+    });
+
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    //*
+    this.composer.addPass(new SMAAPass(innerWidth, innerHeight));
+    const ssrrPass = new SSRrPass({
+      renderer: this.renderer,
+      scene: this.scene,
+      camera: this.camera,
+      selects: this.state.selects,
+    });
+    ssrrPass.specularMaterial.color.r = 0.1;
+    ssrrPass.ior = 1.2;
+    this.composer.addPass(ssrrPass);
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
+    //*/
+  }
+
+  makeWall(params, invisible) {
+    const material = invisible
+      ? { lambert: { visible: false } }
+      : { standard: { color: 0x111111, roughness: 0.9, metalness: 0.3 } };
+    const box = this.physics.add.box({ collisionFlags: collisionFlags.static, ...params }, material);
+    box.castShadow = false;
+    box.body.setRestitution(0.5);
+    if (invisible) this.scene.remove(box);
+    return box;
+  }
+
+  makePlayer(color, x) {
+    const player = this.physics.add.sphere(
+      { x, radius: 0.5 },
+      { standard: { metalness: 0.8, roughness: 0.4, color: color, emissive: color, emissiveIntensity: 0.9 } }
+    );
+    player.userData.tag = "player";
+    player.body.setDamping(0, 0);
+    player.body.setRestitution(1);
+    player.add(new THREE.PointLight(color, 10, 3, 2));
+    player.userData.particleEmitter = new ParticleEmitter(this.scene, color);
+    player.add(player.userData.particleEmitter);
+    return player;
+  }
+
   async create() {
-    this.warpSpeed();
-    this.camera.position.set(0, 10, 30);
-    this.state.group = new THREE.Group();
-    this.state.group.rotation.y = Math.PI;
-    this.scene.add(this.state.group);
-    this.physics.addExisting(this.state.group, { shape: "capsule", radius: 0.5, height: 1.5, ignoreScale: true });
-    this.state.group.body.setAngularFactor(0, 1, 0);
-    this.state.group.body.setDamping(0.8, 0.99);
+    const warp = await this.warpSpeed("-ground", "-sky");
+    warp.lights.ambientLight.intensity = 0.3;
+    warp.lights.directionalLight.intensity = 0.3;
 
-    this.state.box = this.add.box({ height: 2.5 }, { lambert: { color: "hotpink" } });
-    this.state.box.add(this.make.sphere({ z: 0.5, y: 1.2, radius: 0.2 }));
-    this.state.group.add(this.state.box);
+    this.camera.position.set(0, 15, 30);
 
-    this.physics.add.box({ z: -2, width: 10, height: 30, collisionFlags: collisionFlags.static });
-    this.physics.add.box({ z: -2, x: -3, y: 3, depth: 4, collisionFlags: collisionFlags.static });
-    this.physics.add.box({ z: -2, x: 0, y: 6, depth: 4, collisionFlags: collisionFlags.static });
-    this.physics.add.box({ z: -2, x: 3, y: 9, depth: 4, collisionFlags: collisionFlags.static });
-    this.physics.add.box({ z: -2, x: 0, y: 12, depth: 4, collisionFlags: collisionFlags.static });
+    this.makeWall({ z: -2, y: 5, width: 10, height: 15, depth: 0.5 });
+    this.makeWall({ z: 2, y: 5, width: 10, height: 15, depth: 0.5 }, true);
+    this.makeWall({ x: -5, y: 5, width: 0.5, height: 15, depth: 4 }, true);
+    this.makeWall({ x: 5, y: 5, width: 0.5, height: 15, depth: 4 }, true);
+    this.state.separatorWall = this.makeWall({ x: 0, y: 5, width: 0.5, height: 15, depth: 4 }, true);
+    this.makeWall({ x: 0, y: 12.5, width: 10, height: 0.5, depth: 4 }, true);
+    this.makeWall({ x: 0, y: -2.5, width: 10, height: 0.5, depth: 4 });
+    this.makeWall({ x: 0, y: -2.5, width: 10, height: 0.5, depth: 4 });
 
-    /*
-    const obs = this.add.cylinder({height: 10, radius: 0.25, radiusTop: 0.25, radiusBottom: 0.25 });
-    obs.rotation.z = Math.PI / 2;
-    this.physics.add.existing(obs, {collisionFlags: 1});
-    */
+    this.state.separator = this.assets.models.separator;
+    this.state.separator.rotation.y = Math.PI / 2;
+    this.state.separator.position.y = 5;
+    this.scene.add(this.state.separator);
+    this.state.selects.push(this.state.separator);
+
+    this.state.players.push(this.makePlayer("red", -2));
+    this.state.players.push(this.makePlayer("blue", 2));
+
+    this.state.star = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.5),
+      new THREE.MeshStandardMaterial({
+        color: "gold",
+        roughness: 0.3,
+        metalness: 0.7,
+        emissive: "gold",
+        emissiveIntensity: 0.2,
+      })
+    );
+    this.state.star.userData.particleEmitter = new ParticleEmitter(this.scene, "gold");
+    this.state.star.userData.particleEmitter.randomize = false;
+    this.state.star.add(this.state.star.userData.particleEmitter);
+    this.scene.add(this.state.star);
+    this.physics.add.existing(this.state.star, {
+      shape: "convex",
+      collisionFlags: collisionFlags.kinematic,
+      mass: 0.000001,
+    });
+    this.state.star.body.on.collision((other, event) => {
+      if (
+        !this.state.gameOver &&
+        !this.state.repositioningStar &&
+        event === "start" &&
+        other.userData.tag === "player"
+      ) {
+        this.state.score++;
+        this.state.scoreText.set({ content: this.state.score.toFixed(0) });
+        this.state.starSide = this.state.starSide === "left" ? "right" : "left";
+        this.repositionStar(true);
+      }
+    });
+    this.repositionStar();
+
+    this.state.textBlock = new ThreeMeshUI.Block({
+      width: 2,
+      height: 2,
+      alignContent: "center",
+      justifyContent: "center",
+    });
+    this.state.textBlock.position.z = 3;
+    this.scene.add(this.state.textBlock);
+
+    this.state.scoreText = new ThreeMeshUI.Text({
+      fontFamily: "mono.json",
+      fontTexture: "mono.png",
+      fontSize: 0.8,
+      content: "0",
+    });
+    const scoreContainer = new ThreeMeshUI.Block({
+      width: 2,
+      height: 1,
+      justifyContent: "center",
+      backgroundOpacity: 0,
+    });
+    scoreContainer.add(this.state.scoreText);
+    this.state.textBlock.add(scoreContainer);
+
+    this.state.timeText = new ThreeMeshUI.Text({
+      fontFamily: "mono.json",
+      fontTexture: "mono.png",
+      fontSize: 0.8,
+      content: "hi",
+    });
+    const timeContainer = new ThreeMeshUI.Block({
+      width: 2,
+      height: 1,
+      justifyContent: "center",
+      backgroundOpacity: 0,
+    });
+    timeContainer.add(this.state.timeText);
+    this.state.textBlock.add(timeContainer);
   }
-  getGamepad() {
+
+  async repositionStar(burst) {
+    this.state.repositioningStar = true;
+    if (burst) {
+      this.state.star.userData.particleEmitter.burst();
+    }
+    await gsap.to(this.state.star.scale, { x: 0.01, y: 0.01, z: 0.01, duration: 0.2 }).then();
+    const margin = 0.7;
+    const offset = this.state.starSide === "left" ? -2.5 : 2.5;
+    this.state.star.position.set(
+      rand(offset - 2.5 + margin, offset + 2.5 - margin),
+      rand(-2.5 + margin, 12.5 - margin),
+      rand(-2 + margin, 2 - margin)
+    );
+    await gsap.to(this.state.star.scale, { x: 1, y: 1, z: 1, duration: 0.2 }).then();
+    this.state.repositioningStar = false;
+  }
+
+  getGamepad(i) {
     const gamepads = navigator.getGamepads();
-    if (gamepads.length && gamepads[0]) return gamepads[0];
+    if (gamepads.length && gamepads[i]) return gamepads[i];
   }
-  update() {
-    const gamepad = this.getGamepad();
-    if (!this.state.resetting) {
-      if (gamepad) {
-        const ax = deadzone(-gamepad.axes[0]);
-        const ay = deadzone(-gamepad.axes[1]);
-        const bx = deadzone(-gamepad.axes[2]);
-        this.state.group.body.applyCentralLocalForce(10 * ax, 0, 10 * ay);
-        this.state.group.body.applyTorqueImpulse(0, 0.03 * bx, 0);
-        const bv = this.state.group.body.velocity;
-        if (this.state.jumpWasUp && gamepad.buttons[0].pressed && Math.abs(bv.y) < 0.01) {
-          this.state.group.body.applyCentralImpulse(0, 15, 0);
-          this.state.jumpWasUp = false;
-        }
-      }
 
-      const vy = Math.abs(this.state.group.body.velocity.y);
-      this.state.box.scale.x = map(vy, 0, 30, 1, 0.3);
-      this.state.box.scale.z = map(vy, 0, 30, 1, 0.3);
-      this.state.box.scale.y = map(vy, 0, 30, 1, 2);
-      if (this.state.group.position.y < -5 || this.state.group.position.y > 50) {
-        this.state.group.body.setCollisionFlags(2);
-        this.state.group.body.setPosition(0, 3, 0);
-        this.state.group.body.setRotation(0, 0, 0);
-        this.state.group.body.refresh();
-        this.state.box.scale.setScalar(1);
-        this.state.box.position.y = 0;
-        this.state.resetting = true;
-        setInterval(() => {
-          this.state.group.body.setCollisionFlags(0);
-          this.state.resetting = false;
-        }, 200);
+  update(time, delta) {
+    const deltaSecs = delta / 1000;
+
+    this.state.timeLeft -= deltaSecs;
+
+    if (this.state.timeLeft <= 0) {
+      if (!this.state.gameOver) {
+        this.state.gameOver = true;
+        (async () => {
+          this.state.timeText.set({ fontSize: 0.4 });
+          this.state.timeText.set({ content: "game over" });
+          gsap.to(this.state.star.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 0.5 });
+          gsap.to(this.state.textBlock.position, { y: 5, duration: 0.5 });
+          await gsap.to(this.state.textBlock.scale, { x: 2, y: 2, z: 2, duration: 0.5 }).then();
+          this.physics.destroy(this.state.separatorWall);
+          await gsap.to(this.state.separator.scale, { x: 0.001, z: 0.001, duration: 1 }).then();
+          this.scene.remove(this.state.separator);
+        })();
+      }
+    } else {
+      this.state.timeText.set({ content: this.state.timeLeft.toFixed(0) });
+    }
+
+    ThreeMeshUI.update();
+
+    for (let i = 0; i < this.state.players.length; i++) {
+      const player = this.state.players[i];
+      player.userData.particleEmitter.tick(deltaSecs);
+      const gamepad = this.getGamepad(i);
+      if (gamepad) {
+        const ax = deadzone(gamepad.axes[0]);
+        const ay = deadzone(gamepad.axes[1]);
+        const bx = deadzone(-gamepad.axes[2]);
+        const by = deadzone(-gamepad.axes[3]);
+        player.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
     }
-    if (gamepad && !gamepad.buttons[0].pressed) {
-      this.state.jumpWasUp = true;
-    }
+    this.state.star.userData.particleEmitter.tick(deltaSecs);
+    this.state.star.rotation.y += 0.01;
+    this.state.star.rotation.x += 0.02;
+    this.state.star.body.needUpdate = true;
   }
 }
 
@@ -102,7 +295,7 @@ PhysicsLoader(
   () =>
     new Project({
       antialias: true,
-      gravity: { x: 0, y: -15, z: 0 },
+      gravity: { x: 0, y: 0, z: 0 },
       scenes: [MainScene],
     })
 );

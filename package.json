@@ -4,5 +4,10 @@
     "build": "npx esbuild --bundle --outfile=bundle.js index.js",
     "dev": "npx esbuild --bundle --outfile=bundle.js --watch index.js"
   },
-  "dependencies": { "enable3d": "^0.23.0", "esbuild": "^0.12.19" }
+  "dependencies": {
+    "enable3d": "^0.23.0",
+    "esbuild": "^0.12.19",
+    "gsap": "^3.7.1",
+    "three-mesh-ui": "^5.2.1"
+  }
 }
