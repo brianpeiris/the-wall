@@ -125,6 +125,24 @@ class MainScene extends Scene3D {
     return player;
   }
 
+  makeText(content, block) {
+    const text = new ThreeMeshUI.Text({
+      fontFamily: "mono.json",
+      fontTexture: "mono.png",
+      fontSize: 0.8,
+      content
+    });
+    const scoreContainer = new ThreeMeshUI.Block({
+      width: 2,
+      height: 1,
+      justifyContent: "center",
+      backgroundOpacity: 0,
+    });
+    scoreContainer.add(text);
+    block.add(scoreContainer);
+    return text;
+  }
+
   async create() {
     const warp = await this.warpSpeed("-ground", "-sky");
     warp.lights.ambientLight.intensity = 0.3;
@@ -193,35 +211,8 @@ class MainScene extends Scene3D {
     this.state.textBlock.position.z = 3;
     this.scene.add(this.state.textBlock);
 
-    this.state.scoreText = new ThreeMeshUI.Text({
-      fontFamily: "mono.json",
-      fontTexture: "mono.png",
-      fontSize: 0.8,
-      content: "0",
-    });
-    const scoreContainer = new ThreeMeshUI.Block({
-      width: 2,
-      height: 1,
-      justifyContent: "center",
-      backgroundOpacity: 0,
-    });
-    scoreContainer.add(this.state.scoreText);
-    this.state.textBlock.add(scoreContainer);
-
-    this.state.timeText = new ThreeMeshUI.Text({
-      fontFamily: "mono.json",
-      fontTexture: "mono.png",
-      fontSize: 0.8,
-      content: "hi",
-    });
-    const timeContainer = new ThreeMeshUI.Block({
-      width: 2,
-      height: 1,
-      justifyContent: "center",
-      backgroundOpacity: 0,
-    });
-    timeContainer.add(this.state.timeText);
-    this.state.textBlock.add(timeContainer);
+    this.state.scoreText = this.makeText("0", this.state.textBlock);
+    this.state.timeText = this.makeText("", this.state.textBlock);
   }
 
   async repositionStar(burst) {
