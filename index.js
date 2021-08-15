@@ -8,6 +8,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { gsap } from "gsap";
 import ThreeMeshUI from "three-mesh-ui";
+import Peer from "peerjs";
 
 import { ParticleEmitter } from "./ParticleEmitter";
 import { rand } from "./utils";
@@ -67,8 +68,10 @@ class MainScene extends Scene3D {
   }
 
   async init() {
+    const queryParams = new URLSearchParams(location.search);
+
     this.state = window.state = Object.preventExtensions({
-      players: [],
+      isHost: !queryParams.has("id"),
       selects: [],
       star: null,
       starSide: "left",
@@ -78,9 +81,14 @@ class MainScene extends Scene3D {
       textBlock: null,
       scoreText: null,
       timeText: null,
+      gameStarted: false,
       gameOver: false,
       separator: null,
       separatorWall: null,
+      localPlayer: null,
+      remotePlayer: null,
+      remoteConn: null,
+      endedGame: false,
     });
 
     this.composer = new EffectComposer(this.renderer);
@@ -98,7 +106,67 @@ class MainScene extends Scene3D {
     this.composer.addPass(ssrrPass);
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
     //*/
+    
+    const peer = new Peer();
+
+    peer.on("error", error => {
+      console.log("peer error", error);
+    });
+
+    peer.on('open', id => {
+      if (this.state.isHost) {
+        const shareLink = document.getElementById("shareLink");
+        shareLink.style.display = "block";
+        shareLink.href = `http://localhost:3000/?id=${id}`;
+      } else {
+        const id = queryParams.get("id");
+        this.state.remoteConn = peer.connect(id);
+        this.state.remoteConn.on('data', data => {
+          // received data from host
+          this.updateRemotePlayer(data.playerPosition);
+          if (this.state.score !== data.score) {
+            this.state.score = data.score;
+            this.state.scoreText.set({ content: this.state.score.toFixed(0) });
+          }
+          if (
+            this.state.star.position.x !== data.starPosition[0] ||
+            this.state.star.position.y !== data.starPosition[1] ||
+            this.state.star.position.z !== data.starPosition[2]
+          ) {
+            this.repositionStar(true, data.starPosition);
+          }
+          this.state.timeLeft = data.timeLeft;
+          this.state.gameOver = data.gameOver;
+        });
+      }
+    });
+
+    peer.on('connection', conn => {
+      const shareLink = document.getElementById("shareLink");
+      shareLink.style.display = "none";
+      this.state.gameStarted = true;
+      this.state.remoteConn = conn;
+      this.state.remoteConn.on("data", data => {
+        // received data from client
+        this.updateRemotePlayer(data);
+      });
+    });
   }
+
+  updateRemotePlayer = (() => {
+    let lastUpdate = performance.now();
+    const remotePosition = {x: 0, y: 0, z: 0};
+    return (data) => {
+      const delta = performance.now() - lastUpdate;
+      remotePosition.x = data[0];
+      remotePosition.y = data[1];
+      remotePosition.z = data[2];
+      remotePosition.duration = delta / 1000;
+      gsap.killTweensOf(this.state.remotePlayer.position);
+      gsap.to(this.state.remotePlayer.position, remotePosition);
+      lastUpdate = performance.now();
+    };
+  })();
 
   makeWall(params, invisible) {
     const material = invisible
@@ -111,9 +179,9 @@ class MainScene extends Scene3D {
     return box;
   }
 
-  makePlayer(color, x) {
+  makePlayer(color, x, isRemote) {
     const player = this.physics.add.sphere(
-      { x, radius: 0.5 },
+      { x, radius: 0.5, collisionFlags: isRemote ? collisionFlags.kinematic : collisionFlags.dynamic },
       { standard: { metalness: 0.8, roughness: 0.4, color: color, emissive: color, emissiveIntensity: 0.9 } }
     );
     player.userData.tag = "player";
@@ -130,7 +198,7 @@ class MainScene extends Scene3D {
       fontFamily: "mono.json",
       fontTexture: "mono.png",
       fontSize: 0.8,
-      content
+      content,
     });
     const scoreContainer = new ThreeMeshUI.Block({
       width: 2,
@@ -165,8 +233,13 @@ class MainScene extends Scene3D {
     this.scene.add(this.state.separator);
     this.state.selects.push(this.state.separator);
 
-    this.state.players.push(this.makePlayer("red", -2));
-    this.state.players.push(this.makePlayer("blue", 2));
+    if (this.state.isHost) {
+      this.state.localPlayer = this.makePlayer("red", -2);
+      this.state.remotePlayer = this.makePlayer("blue", 2, true);
+    } else {
+      this.state.localPlayer = this.makePlayer("blue", 2);
+      this.state.remotePlayer = this.makePlayer("red", -2, true);
+    }
 
     this.state.star = new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.5),
@@ -187,20 +260,22 @@ class MainScene extends Scene3D {
       collisionFlags: collisionFlags.kinematic,
       mass: 0.000001,
     });
-    this.state.star.body.on.collision((other, event) => {
-      if (
-        !this.state.gameOver &&
-        !this.state.repositioningStar &&
-        event === "start" &&
-        other.userData.tag === "player"
-      ) {
-        this.state.score++;
-        this.state.scoreText.set({ content: this.state.score.toFixed(0) });
-        this.state.starSide = this.state.starSide === "left" ? "right" : "left";
-        this.repositionStar(true);
-      }
-    });
-    this.repositionStar();
+    if (this.state.isHost) {
+      this.state.star.body.on.collision((other, event) => {
+        if (
+          !this.state.gameOver &&
+          !this.state.repositioningStar &&
+          event === "start" &&
+          other.userData.tag === "player"
+        ) {
+          this.state.score++;
+          this.state.scoreText.set({ content: this.state.score.toFixed(0) });
+          this.state.starSide = this.state.starSide === "left" ? "right" : "left";
+          this.repositionStar(true);
+        }
+      });
+      this.repositionStar();
+    }
 
     this.state.textBlock = new ThreeMeshUI.Block({
       width: 2,
@@ -215,19 +290,22 @@ class MainScene extends Scene3D {
     this.state.timeText = this.makeText("", this.state.textBlock);
   }
 
-  async repositionStar(burst) {
+  async repositionStar(burst, pos) {
+    if (!pos) {
+      const offset = this.state.starSide === "left" ? -2.5 : 2.5;
+      const margin = 0.7;
+      pos = [
+        rand(offset - 2.5 + margin, offset + 2.5 - margin),
+        rand(-2.5 + margin, 12.5 - margin),
+        rand(-2 + margin, 2 - margin)
+      ]
+    }
     this.state.repositioningStar = true;
     if (burst) {
       this.state.star.userData.particleEmitter.burst();
     }
     await gsap.to(this.state.star.scale, { x: 0.01, y: 0.01, z: 0.01, duration: 0.2 }).then();
-    const margin = 0.7;
-    const offset = this.state.starSide === "left" ? -2.5 : 2.5;
-    this.state.star.position.set(
-      rand(offset - 2.5 + margin, offset + 2.5 - margin),
-      rand(-2.5 + margin, 12.5 - margin),
-      rand(-2 + margin, 2 - margin)
-    );
+    this.state.star.position.set(...pos);
     await gsap.to(this.state.star.scale, { x: 1, y: 1, z: 1, duration: 0.2 }).then();
     this.state.repositioningStar = false;
   }
@@ -237,48 +315,81 @@ class MainScene extends Scene3D {
     if (gamepads.length && gamepads[i]) return gamepads[i];
   }
 
-  update(time, delta) {
-    const deltaSecs = delta / 1000;
+  update = (() => {
+    const syncData = {
+      playerPosition: [],
+      timeLeft: 0,
+      score: 0,
+      gameOver: false,
+      starPosition: [],
+    }
+    return (time, delta) => {
+      this.state.localPlayer.position.toArray(syncData.playerPosition);
+      syncData.timeLeft = this.state.timeLeft;
+      syncData.score = this.state.score;
+      syncData.gameOver = this.state.gameOver;
+      this.state.star.position.toArray(syncData.starPosition);
 
-    this.state.timeLeft -= deltaSecs;
+      if (this.state.remoteConn) {
+        if (this.state.isHost) {
+          this.state.remoteConn.send(syncData);
+        } else {
+          this.state.remoteConn.send(syncData.playerPosition);
+        }
+      }
 
-    if (this.state.timeLeft <= 0) {
+      const deltaSecs = delta / 1000;
+
+      if (this.state.isHost && this.state.gameStarted) {
+        this.state.timeLeft -= deltaSecs;
+
+        if (this.state.timeLeft <= 0) {
+          this.state.gameOver = true;
+        } 
+      }
+
       if (!this.state.gameOver) {
-        this.state.gameOver = true;
+        this.state.timeText.set({ content: this.state.timeLeft.toFixed(0) });
+      }
+
+      if (this.state.gameOver && !this.state.endedGame) {
+        this.state.endedGame = true;
         (async () => {
           this.state.timeText.set({ fontSize: 0.4 });
           this.state.timeText.set({ content: "game over" });
+
           gsap.to(this.state.star.scale, { x: 0.001, y: 0.001, z: 0.001, duration: 0.5 });
+
           gsap.to(this.state.textBlock.position, { y: 5, duration: 0.5 });
           await gsap.to(this.state.textBlock.scale, { x: 2, y: 2, z: 2, duration: 0.5 }).then();
+
           this.physics.destroy(this.state.separatorWall);
           await gsap.to(this.state.separator.scale, { x: 0.001, z: 0.001, duration: 1 }).then();
           this.scene.remove(this.state.separator);
         })();
       }
-    } else {
-      this.state.timeText.set({ content: this.state.timeLeft.toFixed(0) });
-    }
 
-    ThreeMeshUI.update();
+      ThreeMeshUI.update();
 
-    for (let i = 0; i < this.state.players.length; i++) {
-      const player = this.state.players[i];
-      player.userData.particleEmitter.tick(deltaSecs);
-      const gamepad = this.getGamepad(i);
+      this.state.localPlayer.userData.particleEmitter.tick(deltaSecs);
+      const gamepad = this.getGamepad(this.state.isHost ? 0 : 1);
       if (gamepad) {
         const ax = deadzone(gamepad.axes[0]);
         const ay = deadzone(gamepad.axes[1]);
         const bx = deadzone(-gamepad.axes[2]);
         const by = deadzone(-gamepad.axes[3]);
-        player.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
+        this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
+
+      this.state.remotePlayer.userData.particleEmitter.tick(deltaSecs);
+      this.state.remotePlayer.body.needUpdate = true;
+
+      this.state.star.userData.particleEmitter.tick(deltaSecs);
+      this.state.star.rotation.y += 0.01;
+      this.state.star.rotation.x += 0.02;
+      this.state.star.body.needUpdate = true;
     }
-    this.state.star.userData.particleEmitter.tick(deltaSecs);
-    this.state.star.rotation.y += 0.01;
-    this.state.star.rotation.x += 0.02;
-    this.state.star.body.needUpdate = true;
-  }
+  })();
 }
 
 PhysicsLoader(

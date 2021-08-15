@@ -1,2 +1,2 @@
 // ThreeMeshUI looks for a global variable.
-window.global = false;
+window.global = window

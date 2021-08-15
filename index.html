@@ -1,11 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title></title>
-  <style>body { margin: 0;}</style>
-</head>
-<body>
-  <script src="bundle.js"></script>  
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title></title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        font-family: sans-serif;
+      }
+      #shareLink {
+        position: absolute;
+        bottom: 20px;
+        background: white;
+        font-size: 16pt;
+        padding: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <a id="shareLink"  style="display: none">share</a>
+    <script src="bundle.js"></script>
+  </body>
 </html>
