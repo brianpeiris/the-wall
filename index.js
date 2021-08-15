@@ -43,9 +43,9 @@ class MainScene extends Scene3D {
   async init() {
     const queryParams = new URLSearchParams(location.search);
 
-    this.state = window.state = Object.preventExtensions({
+    this.state = Object.preventExtensions({
       isHost: !queryParams.has("id"),
-      selects: [],
+      refractorObjects: [],
       star: null,
       starSide: "left",
       repositioningStar: false,
@@ -66,19 +66,17 @@ class MainScene extends Scene3D {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    //*
     this.composer.addPass(new SMAAPass(innerWidth, innerHeight));
     const ssrrPass = new SSRrPass({
       renderer: this.renderer,
       scene: this.scene,
       camera: this.camera,
-      selects: this.state.selects,
+      selects: this.state.refractorObjects,
     });
     ssrrPass.specularMaterial.color.r = 0.1;
     ssrrPass.ior = 1.2;
     this.composer.addPass(ssrrPass);
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
-    //*/
     
     const peer = new Peer();
 
@@ -93,6 +91,7 @@ class MainScene extends Scene3D {
         shareLink.href = `http://localhost:3000/?id=${id}`;
       } else {
         const id = queryParams.get("id");
+        // connect to host
         this.state.remoteConn = peer.connect(id);
         this.state.remoteConn.on('data', data => {
           // received data from host
@@ -115,6 +114,7 @@ class MainScene extends Scene3D {
     });
 
     peer.on('connection', conn => {
+      // client connected
       const shareLink = document.getElementById("shareLink");
       shareLink.style.display = "none";
       this.state.gameStarted = true;
@@ -204,7 +204,7 @@ class MainScene extends Scene3D {
     this.state.separator.rotation.y = Math.PI / 2;
     this.state.separator.position.y = 5;
     this.scene.add(this.state.separator);
-    this.state.selects.push(this.state.separator);
+    this.state.refractorObjects.push(this.state.separator);
 
     if (this.state.isHost) {
       this.state.localPlayer = this.makePlayer("red", -2);
