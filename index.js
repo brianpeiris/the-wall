@@ -11,24 +11,7 @@ import ThreeMeshUI from "three-mesh-ui";
 import Peer from "peerjs";
 
 import { ParticleEmitter } from "./ParticleEmitter";
-import { rand } from "./utils";
-
-function map(v, a, b, c, d) {
-  return ((v - a) / (b - a)) * (d - c) + c;
-}
-
-function deadzone(v, z = 0.05) {
-  const s = Math.sign(v);
-  const av = Math.abs(v);
-  v = av < z ? z : av;
-  return s * map(v, z, 1, 0, 1);
-}
-
-function sleep(sec) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, sec * 1000);
-  });
-}
+import { rand, deadzone } from "./utils";
 
 const collisionFlags = {
   dynamic: 0,
@@ -48,22 +31,12 @@ const loadModel = (() => {
   };
 })();
 
-const loadTexture = (() => {
-  const loader = new THREE.TextureLoader();
-  return (texture) => {
-    return new Promise((resolve) => {
-      loader.load(texture, resolve);
-    });
-  };
-})();
-
 class MainScene extends Scene3D {
   async preload() {
     this.assets = {
       models: {
         separator: await loadModel("separator.glb"),
       },
-      textures: {},
     };
   }
 
