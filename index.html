@@ -10,18 +10,24 @@
         justify-content: center;
         font-family: sans-serif;
       }
-      #shareLink {
+      #links {
         position: absolute;
         bottom: 20px;
         background: white;
         font-size: 16pt;
-        padding: 5px;
+        padding: 5px 8px;
         z-index: 1;
+      }
+      #links a {
+        color: black;
       }
     </style>
   </head>
   <body>
-    <a id="shareLink"  style="display: none">share</a>
+    <div id="links" style="display: none">
+      <a id="shareLink">remote</a> |
+      <a id="localLink" href="#">local</a>
+    </div>
     <script src="bundle.js"></script>
   </body>
 </html>

@@ -16,7 +16,7 @@ class ParticleEmitter extends THREE.Object3D {
   constructor(scene, color) {
     super();
     const material = new THREE.MeshBasicMaterial({ color });
-    const geometry = new THREE.SphereGeometry();
+    const geometry = new THREE.SphereGeometry(1, 16, 8);
     this.particlesMesh = new THREE.InstancedMesh(geometry, material, 20);
     scene.add(this.particlesMesh);
     this.particles = [];

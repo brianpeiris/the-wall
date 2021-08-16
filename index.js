@@ -43,18 +43,20 @@ class MainScene extends Scene3D {
   async init() {
     const queryParams = new URLSearchParams(location.search);
 
-    this.state = Object.preventExtensions({
+    window.scene = this;
+    this.state = window.state = Object.preventExtensions({
       isHost: !queryParams.has("id"),
       refractorObjects: [],
       star: null,
       starSide: "left",
       repositioningStar: false,
       score: 0,
-      timeLeft: 10,
+      timeLeft: 60,
       textBlock: null,
       scoreText: null,
       timeText: null,
-      gameStarted: true,
+      localGame: false,
+      gameStarted: false,
       gameOver: false,
       separator: null,
       separatorWall: null,
@@ -72,9 +74,19 @@ class MainScene extends Scene3D {
 
     peer.on("open", (id) => {
       if (this.state.isHost) {
+        const links = document.getElementById("links");
+        links.style.display = "block";
         const shareLink = document.getElementById("shareLink");
-        shareLink.style.display = "block";
         shareLink.href = `http://localhost:3000/?id=${id}`;
+        const localLink = document.getElementById("localLink");
+        localLink.addEventListener("click", e => {
+          this.state.localGame = true;
+          this.state.gameStarted = true;
+          this.physics.destroy(this.state.remotePlayer);
+          this.physics.add.existing(this.state.remotePlayer);
+          links.style.display = "none";
+          e.preventDefault();
+        });
       } else {
         const id = queryParams.get("id");
         // connect to host
@@ -101,8 +113,8 @@ class MainScene extends Scene3D {
 
     peer.on("connection", (conn) => {
       // client connected
-      const shareLink = document.getElementById("shareLink");
-      shareLink.style.display = "none";
+      const links = document.getElementById("links");
+      links.style.display = "none";
       this.state.gameStarted = true;
       this.state.remoteConn = conn;
       this.state.remoteConn.on("data", (data) => {
@@ -130,7 +142,7 @@ class MainScene extends Scene3D {
   makeWall(params, invisible) {
     const material = invisible
       ? { lambert: { visible: false } }
-      : { standard: { color: 0x111111, roughness: 0.9, metalness: 0.3 } };
+      : { standard: { color: 0x111111, roughness: 1, metalness: 0 } };
     const box = this.physics.add.box({ collisionFlags: collisionFlags.static, ...params }, material);
     box.castShadow = false;
     box.body.setRestitution(0.5);
@@ -141,7 +153,7 @@ class MainScene extends Scene3D {
   makePlayer(color, x, isRemote) {
     const player = this.physics.add.sphere(
       { x, radius: 0.5, collisionFlags: isRemote ? collisionFlags.kinematic : collisionFlags.dynamic },
-      { standard: { metalness: 0.8, roughness: 0.4, color: color, emissive: color, emissiveIntensity: 0.9 } }
+      { standard: { metalness: 0.8, roughness: 0.4, color: color, emissive: color, emissiveIntensity: 0.5 } }
     );
     player.userData.tag = "player";
     player.body.setDamping(0, 0);
@@ -171,7 +183,7 @@ class MainScene extends Scene3D {
   }
 
   async create() {
-    const warp = await this.warpSpeed("-ground", "-sky", "-orbitControls");
+    const warp = window.warp = await this.warpSpeed("-ground", "-sky", "-orbitControls");
     warp.lights.ambientLight.intensity = 0.3;
     warp.lights.directionalLight.intensity = 0.3;
 
@@ -189,6 +201,13 @@ class MainScene extends Scene3D {
     this.makeWall({ x: 0, y: -2.5, width: 10, height: 0.5, depth: 4 });
 
     this.state.separator = this.assets.models.separator;
+    Object.assign(this.state.separator.material, {
+      transparent: true,
+      opacity: 0.8,
+      metalness: 0,
+      roughness: 0,
+    });
+    this.state.separator.material.color.setHex(0x222222);
     this.state.separator.rotation.y = Math.PI / 2;
     this.state.separator.position.y = 5;
     this.scene.add(this.state.separator);
@@ -225,6 +244,7 @@ class MainScene extends Scene3D {
     if (this.state.isHost) {
       this.state.star.body.on.collision((other, event) => {
         if (
+          this.state.gameStarted &&
           !this.state.gameOver &&
           !this.state.repositioningStar &&
           event === "start" &&
@@ -344,8 +364,19 @@ class MainScene extends Scene3D {
         this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
 
-      this.state.remotePlayer.userData.particleEmitter.tick(deltaSecs);
-      this.state.remotePlayer.body.needUpdate = true;
+      if (this.state.localGame) {
+        this.state.remotePlayer.userData.particleEmitter.tick(deltaSecs);
+        const gamepad = this.getGamepad(1);
+        if (gamepad) {
+          const ax = deadzone(gamepad.axes[0]);
+          const ay = deadzone(gamepad.axes[1]);
+          const by = deadzone(-gamepad.axes[3]);
+          this.state.remotePlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
+        }
+      } else {
+        this.state.remotePlayer.userData.particleEmitter.tick(deltaSecs);
+        this.state.remotePlayer.body.needUpdate = true;
+      }
 
       this.state.star.userData.particleEmitter.tick(deltaSecs);
       this.state.star.rotation.y += 0.6 * deltaSecs;
@@ -357,7 +388,7 @@ class MainScene extends Scene3D {
 
 const renderer = new Renderer({ disableFullscreenUi: false });
 //renderer.renderQuilt = true;
-renderer.render2d = true;
+//renderer.render2d = true;
 renderer.setSize = (width, height) => {
   return renderer.webglRenderer.setSize(width, height);
 };
