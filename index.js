@@ -1,10 +1,5 @@
 import "./global";
 import { Project, Scene3D, PhysicsLoader, THREE } from "enable3d";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
-import { SSRrPass } from "three/examples/jsm/postprocessing/SSRrPass";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
-import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { gsap } from "gsap";
 import ThreeMeshUI from "three-mesh-ui";
@@ -55,11 +50,11 @@ class MainScene extends Scene3D {
       starSide: "left",
       repositioningStar: false,
       score: 0,
-      timeLeft: 60,
+      timeLeft: 10,
       textBlock: null,
       scoreText: null,
       timeText: null,
-      gameStarted: false,
+      gameStarted: true,
       gameOver: false,
       separator: null,
       separatorWall: null,
@@ -68,22 +63,6 @@ class MainScene extends Scene3D {
       remoteConn: null,
       endedGame: false,
     });
-
-    //*
-    //this.composer = new EffectComposer(this.renderer);
-    //this.composer.addPass(new RenderPass(this.scene, this.camera));
-    //this.composer.addPass(new SMAAPass(innerWidth, innerHeight));
-    //const ssrrPass = new SSRrPass({
-    //  renderer: this.renderer,
-    //  scene: this.scene,
-    //  camera: this.camera,
-    //  selects: this.state.refractorObjects,
-    //});
-    //ssrrPass.specularMaterial.color.r = 0.1;
-    //ssrrPass.ior = 1.2;
-    //this.composer.addPass(ssrrPass);
-    //this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
-    //*/
 
     const peer = new Peer();
 
@@ -192,11 +171,9 @@ class MainScene extends Scene3D {
   }
 
   async create() {
-    const warp = await this.warpSpeed("-ground", "-sky");
+    const warp = await this.warpSpeed("-ground", "-sky", "-orbitControls");
     warp.lights.ambientLight.intensity = 0.3;
     warp.lights.directionalLight.intensity = 0.3;
-
-    //this.scene.add(new THREE.AmbientLight(0xeeeeee));
 
     const camY = 5
     this.camera.position.set(0, camY, 70);
@@ -363,7 +340,6 @@ class MainScene extends Scene3D {
       if (gamepad) {
         const ax = deadzone(gamepad.axes[0]);
         const ay = deadzone(gamepad.axes[1]);
-        const bx = deadzone(-gamepad.axes[2]);
         const by = deadzone(-gamepad.axes[3]);
         this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
@@ -372,8 +348,8 @@ class MainScene extends Scene3D {
       this.state.remotePlayer.body.needUpdate = true;
 
       this.state.star.userData.particleEmitter.tick(deltaSecs);
-      this.state.star.rotation.y += 0.01;
-      this.state.star.rotation.x += 0.02;
+      this.state.star.rotation.y += 0.6 * deltaSecs;
+      this.state.star.rotation.x += 1.2 * deltaSecs;
       this.state.star.body.needUpdate = true;
     };
   })();
@@ -381,60 +357,28 @@ class MainScene extends Scene3D {
 
 const renderer = new Renderer({ disableFullscreenUi: false });
 //renderer.renderQuilt = true;
-//renderer.render2d = true;
+renderer.render2d = true;
 renderer.setSize = (width, height) => {
   return renderer.webglRenderer.setSize(width, height);
-};
-renderer.getSize = (vec) => {
-  return renderer.webglRenderer.getSize(vec);
 };
 renderer.setPixelRatio = (ratio) => {
   return renderer.webglRenderer.setPixelRatio(ratio);
 };
-renderer.getPixelRatio = () => {
-  return renderer.webglRenderer.getPixelRatio();
-};
-renderer.setRenderTarget = (a, b, c) => {
-  return renderer.webglRenderer.setRenderTarget(a, b, c);
-};
-renderer.getRenderTarget = () => {
-  return renderer.webglRenderer.getRenderTarget();
-};
 renderer.setAnimationLoop = (func) => {
   return renderer.webglRenderer.setAnimationLoop(func);
-};
-renderer.clear = (a, b, c) => {
-  return renderer.webglRenderer.clear(a, b, c);
-};
-renderer.setClearColor = (a, b) => {
-  return renderer.webglRenderer.setClearColor(a, b);
-};
-renderer.getClearColor = (a) => {
-  return renderer.webglRenderer.getClearColor(a);
-};
-renderer.getClearAlpha = () => {
-  return renderer.webglRenderer.getClearAlpha();
-};
-renderer.setClearAlpha = (a) => {
-  return renderer.webglRenderer.setClearAlpha(a);
 };
 Object.defineProperty(renderer, "shadowMap", {
   get() {
     return renderer.webglRenderer.shadowMap;
   },
 });
-renderer.shadowMap.enabled = false;
-
-const camera = new Camera();
-renderer.mainCamera = camera;
 
 PhysicsLoader(
   "/lib",
   () =>
     new Project({
       renderer,
-      camera,
-      antialias: true,
+      camera: new Camera(),
       gravity: { x: 0, y: 0, z: 0 },
       scenes: [MainScene],
     })

@@ -56,7 +56,7 @@ class ParticleEmitter extends THREE.Object3D {
         this.particlesMesh.setMatrixAt(particleMeta.index, particleMeta.obj.matrix);
         particleMeta.ttl = particleMeta.duration = rand(0.5, 1.5);
         randomUnitVector(particleMeta.velocity);
-        particleMeta.velocity.multiplyScalar(0.02);
+        particleMeta.velocity.multiplyScalar(1.2);
       }
     };
   })();
@@ -66,13 +66,16 @@ class ParticleEmitter extends THREE.Object3D {
       const particleMeta = this.particles[i];
       if (particleMeta.ttl > 0) {
         particleMeta.ttl -= delta;
-        particleMeta.obj.position.add(particleMeta.velocity);
+        particleMeta.obj.position.x += particleMeta.velocity.x * delta;
+        particleMeta.obj.position.y += particleMeta.velocity.y * delta;
+        particleMeta.obj.position.z += particleMeta.velocity.z * delta;
       } else {
         if (this.randomize) {
           this.randomizeParticle(particleMeta);
         }
       }
-      particleMeta.obj.scale.setScalar((particleMeta.ttl / particleMeta.duration) * 0.2 + 0.001);
+      const scale = Math.max(0.00001, (particleMeta.ttl / particleMeta.duration) * 0.2);
+      particleMeta.obj.scale.setScalar(scale);
       particleMeta.obj.updateMatrix();
       this.particlesMesh.setMatrixAt(particleMeta.index, particleMeta.obj.matrix);
     }
