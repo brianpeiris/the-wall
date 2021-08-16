@@ -17,58 +17,66 @@ class ParticleEmitter extends THREE.Object3D {
     super();
     const material = new THREE.MeshBasicMaterial({ color });
     const geometry = new THREE.SphereGeometry();
-    this.sprites = [];
+    this.particlesMesh = new THREE.InstancedMesh(geometry, material, 20);
+    scene.add(this.particlesMesh);
+    this.particles = [];
     for (let i = 0; i < 20; i++) {
-      const sprite = new THREE.Mesh(geometry, material);
-      const spriteMeta = {
+      const particleMeta = {
         duration: 0,
         ttl: 0,
-        sprite,
+        index: i,
+        obj: new THREE.Object3D(),
         velocity: new THREE.Vector3(),
       };
-      this.sprites.push(spriteMeta);
-      scene.add(sprite);
+      this.particles.push(particleMeta);
     }
   }
-  randomizeSprite = (() => {
+  randomizeParticle = (() => {
     const worldPosition = new THREE.Vector3();
-    return (spriteMeta) => {
+    return (particleMeta) => {
       this.getWorldPosition(worldPosition);
-      spriteMeta.duration = spriteMeta.ttl = rand(1, 2);
+      particleMeta.duration = particleMeta.ttl = rand(1, 2);
       const spread = 0.1;
-      spriteMeta.sprite.position.set(
+      particleMeta.obj.position.set(
         worldPosition.x + rand(-spread, spread),
         worldPosition.y + rand(-spread, spread),
         worldPosition.z + rand(-spread, spread)
       );
+      particleMeta.obj.updateMatrix();
+      this.particlesMesh.setMatrixAt(particleMeta.index, particleMeta.obj.matrix);
     };
   })();
   burst = (() => {
     const worldPosition = new THREE.Vector3();
     return () => {
       this.getWorldPosition(worldPosition);
-      for (const spriteMeta of this.sprites) {
-        spriteMeta.sprite.position.copy(worldPosition);
-        spriteMeta.ttl = spriteMeta.duration = rand(0.5, 1.5);
-        randomUnitVector(spriteMeta.velocity);
-        spriteMeta.velocity.multiplyScalar(0.02);
+      for (const particleMeta of this.particles) {
+        particleMeta.obj.position.copy(worldPosition);
+        particleMeta.obj.updateMatrix();
+        this.particlesMesh.setMatrixAt(particleMeta.index, particleMeta.obj.matrix);
+        particleMeta.ttl = particleMeta.duration = rand(0.5, 1.5);
+        randomUnitVector(particleMeta.velocity);
+        particleMeta.velocity.multiplyScalar(0.02);
       }
     };
   })();
 
   tick(delta) {
-    for (let i = 0; i < this.sprites.length; i++) {
-      const spriteMeta = this.sprites[i];
-      if (spriteMeta.ttl > 0) {
-        spriteMeta.ttl -= delta;
-        spriteMeta.sprite.position.add(spriteMeta.velocity);
+    for (let i = 0; i < this.particles.length; i++) {
+      const particleMeta = this.particles[i];
+      if (particleMeta.ttl > 0) {
+        particleMeta.ttl -= delta;
+        particleMeta.obj.position.add(particleMeta.velocity);
       } else {
         if (this.randomize) {
-          this.randomizeSprite(spriteMeta);
+          this.randomizeParticle(particleMeta);
         }
       }
-      spriteMeta.sprite.scale.setScalar((spriteMeta.ttl / spriteMeta.duration) * 0.2 + 0.001);
+      particleMeta.obj.scale.setScalar((particleMeta.ttl / particleMeta.duration) * 0.2 + 0.001);
+      particleMeta.obj.updateMatrix();
+      this.particlesMesh.setMatrixAt(particleMeta.index, particleMeta.obj.matrix);
     }
+    this.particlesMesh.instanceMatrix.needsUpdate = true;
   }
 }
 

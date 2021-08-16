@@ -9,6 +9,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { gsap } from "gsap";
 import ThreeMeshUI from "three-mesh-ui";
 import Peer from "peerjs";
+import { Camera, Renderer } from "holoplay";
+import Stats from "three/examples/jsm/libs/stats.module";
 
 import { ParticleEmitter } from "./ParticleEmitter";
 import { rand, deadzone } from "./utils";
@@ -30,6 +32,9 @@ const loadModel = (() => {
     });
   };
 })();
+
+const stats = new Stats();
+document.body.append(stats.dom);
 
 class MainScene extends Scene3D {
   async preload() {
@@ -64,27 +69,29 @@ class MainScene extends Scene3D {
       endedGame: false,
     });
 
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new SMAAPass(innerWidth, innerHeight));
-    const ssrrPass = new SSRrPass({
-      renderer: this.renderer,
-      scene: this.scene,
-      camera: this.camera,
-      selects: this.state.refractorObjects,
-    });
-    ssrrPass.specularMaterial.color.r = 0.1;
-    ssrrPass.ior = 1.2;
-    this.composer.addPass(ssrrPass);
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
-    
+    //*
+    //this.composer = new EffectComposer(this.renderer);
+    //this.composer.addPass(new RenderPass(this.scene, this.camera));
+    //this.composer.addPass(new SMAAPass(innerWidth, innerHeight));
+    //const ssrrPass = new SSRrPass({
+    //  renderer: this.renderer,
+    //  scene: this.scene,
+    //  camera: this.camera,
+    //  selects: this.state.refractorObjects,
+    //});
+    //ssrrPass.specularMaterial.color.r = 0.1;
+    //ssrrPass.ior = 1.2;
+    //this.composer.addPass(ssrrPass);
+    //this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 1, 0.01, 0.1));
+    //*/
+
     const peer = new Peer();
 
-    peer.on("error", error => {
+    peer.on("error", (error) => {
       console.log("peer error", error);
     });
 
-    peer.on('open', id => {
+    peer.on("open", (id) => {
       if (this.state.isHost) {
         const shareLink = document.getElementById("shareLink");
         shareLink.style.display = "block";
@@ -93,7 +100,7 @@ class MainScene extends Scene3D {
         const id = queryParams.get("id");
         // connect to host
         this.state.remoteConn = peer.connect(id);
-        this.state.remoteConn.on('data', data => {
+        this.state.remoteConn.on("data", (data) => {
           // received data from host
           this.updateRemotePlayer(data.playerPosition);
           if (this.state.score !== data.score) {
@@ -113,13 +120,13 @@ class MainScene extends Scene3D {
       }
     });
 
-    peer.on('connection', conn => {
+    peer.on("connection", (conn) => {
       // client connected
       const shareLink = document.getElementById("shareLink");
       shareLink.style.display = "none";
       this.state.gameStarted = true;
       this.state.remoteConn = conn;
-      this.state.remoteConn.on("data", data => {
+      this.state.remoteConn.on("data", (data) => {
         // received data from client
         this.updateRemotePlayer(data);
       });
@@ -128,7 +135,7 @@ class MainScene extends Scene3D {
 
   updateRemotePlayer = (() => {
     let lastUpdate = performance.now();
-    const remotePosition = {x: 0, y: 0, z: 0};
+    const remotePosition = { x: 0, y: 0, z: 0 };
     return (data) => {
       const delta = performance.now() - lastUpdate;
       remotePosition.x = data[0];
@@ -189,7 +196,11 @@ class MainScene extends Scene3D {
     warp.lights.ambientLight.intensity = 0.3;
     warp.lights.directionalLight.intensity = 0.3;
 
-    this.camera.position.set(0, 15, 30);
+    //this.scene.add(new THREE.AmbientLight(0xeeeeee));
+
+    const camY = 5
+    this.camera.position.set(0, camY, 70);
+    this.camera.lookAt(new THREE.Vector3(0, camY, 0));
 
     this.makeWall({ z: -2, y: 5, width: 10, height: 15, depth: 0.5 });
     this.makeWall({ z: 2, y: 5, width: 10, height: 15, depth: 0.5 }, true);
@@ -224,6 +235,7 @@ class MainScene extends Scene3D {
         emissiveIntensity: 0.2,
       })
     );
+    this.state.star.castShadow = true;
     this.state.star.userData.particleEmitter = new ParticleEmitter(this.scene, "gold");
     this.state.star.userData.particleEmitter.randomize = false;
     this.state.star.add(this.state.star.userData.particleEmitter);
@@ -270,8 +282,8 @@ class MainScene extends Scene3D {
       pos = [
         rand(offset - 2.5 + margin, offset + 2.5 - margin),
         rand(-2.5 + margin, 12.5 - margin),
-        rand(-2 + margin, 2 - margin)
-      ]
+        rand(-2 + margin, 2 - margin),
+      ];
     }
     this.state.repositioningStar = true;
     if (burst) {
@@ -295,8 +307,10 @@ class MainScene extends Scene3D {
       score: 0,
       gameOver: false,
       starPosition: [],
-    }
+    };
     return (time, delta) => {
+      stats.update();
+
       this.state.localPlayer.position.toArray(syncData.playerPosition);
       syncData.timeLeft = this.state.timeLeft;
       syncData.score = this.state.score;
@@ -318,7 +332,7 @@ class MainScene extends Scene3D {
 
         if (this.state.timeLeft <= 0) {
           this.state.gameOver = true;
-        } 
+        }
       }
 
       if (!this.state.gameOver) {
@@ -361,14 +375,65 @@ class MainScene extends Scene3D {
       this.state.star.rotation.y += 0.01;
       this.state.star.rotation.x += 0.02;
       this.state.star.body.needUpdate = true;
-    }
+    };
   })();
 }
+
+const renderer = new Renderer({ disableFullscreenUi: false });
+//renderer.renderQuilt = true;
+//renderer.render2d = true;
+renderer.setSize = (width, height) => {
+  return renderer.webglRenderer.setSize(width, height);
+};
+renderer.getSize = (vec) => {
+  return renderer.webglRenderer.getSize(vec);
+};
+renderer.setPixelRatio = (ratio) => {
+  return renderer.webglRenderer.setPixelRatio(ratio);
+};
+renderer.getPixelRatio = () => {
+  return renderer.webglRenderer.getPixelRatio();
+};
+renderer.setRenderTarget = (a, b, c) => {
+  return renderer.webglRenderer.setRenderTarget(a, b, c);
+};
+renderer.getRenderTarget = () => {
+  return renderer.webglRenderer.getRenderTarget();
+};
+renderer.setAnimationLoop = (func) => {
+  return renderer.webglRenderer.setAnimationLoop(func);
+};
+renderer.clear = (a, b, c) => {
+  return renderer.webglRenderer.clear(a, b, c);
+};
+renderer.setClearColor = (a, b) => {
+  return renderer.webglRenderer.setClearColor(a, b);
+};
+renderer.getClearColor = (a) => {
+  return renderer.webglRenderer.getClearColor(a);
+};
+renderer.getClearAlpha = () => {
+  return renderer.webglRenderer.getClearAlpha();
+};
+renderer.setClearAlpha = (a) => {
+  return renderer.webglRenderer.setClearAlpha(a);
+};
+Object.defineProperty(renderer, "shadowMap", {
+  get() {
+    return renderer.webglRenderer.shadowMap;
+  },
+});
+renderer.shadowMap.enabled = false;
+
+const camera = new Camera();
+renderer.mainCamera = camera;
 
 PhysicsLoader(
   "/lib",
   () =>
     new Project({
+      renderer,
+      camera,
       antialias: true,
       gravity: { x: 0, y: 0, z: 0 },
       scenes: [MainScene],
