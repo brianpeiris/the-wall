@@ -10,6 +10,8 @@ import Stats from "three/examples/jsm/libs/stats.module";
 import { ParticleEmitter } from "./ParticleEmitter";
 import { rand, deadzone } from "./utils";
 
+const queryParams = new URLSearchParams(location.search);
+
 const collisionFlags = {
   dynamic: 0,
   static: 1,
@@ -41,7 +43,6 @@ class MainScene extends Scene3D {
   }
 
   async init() {
-    const queryParams = new URLSearchParams(location.search);
 
     window.scene = this;
     this.state = window.state = Object.preventExtensions({
@@ -64,6 +65,14 @@ class MainScene extends Scene3D {
       remotePlayer: null,
       remoteConn: null,
       endedGame: false,
+      keys: {
+        w: false,
+        s: false,
+        a: false,
+        d: false,
+        ArrowUp: false,
+        ArrowDown: false,
+      },
     });
 
     const peer = new Peer();
@@ -77,7 +86,7 @@ class MainScene extends Scene3D {
         const links = document.getElementById("links");
         links.style.display = "block";
         const shareLink = document.getElementById("shareLink");
-        shareLink.href = `http://localhost:3000/?id=${id}`;
+        shareLink.href = `?id=${id}`;
         const localLink = document.getElementById("localLink");
         localLink.addEventListener("click", e => {
           this.state.localGame = true;
@@ -90,7 +99,8 @@ class MainScene extends Scene3D {
       } else {
         const id = queryParams.get("id");
         // connect to host
-        this.state.remoteConn = peer.connect(id);
+        // using json serialization because binarypack can be very slow without blob support (in chrome).
+        this.state.remoteConn = peer.connect(id, {serialization: "json"});
         this.state.remoteConn.on("data", (data) => {
           // received data from host
           this.updateRemotePlayer(data.playerPosition);
@@ -121,6 +131,13 @@ class MainScene extends Scene3D {
         // received data from client
         this.updateRemotePlayer(data);
       });
+    });
+
+    window.addEventListener("keydown", e => {
+      this.state.keys[e.key] = true;
+    });
+    window.addEventListener("keyup", e => {
+      this.state.keys[e.key] = false;
     });
   }
 
@@ -356,11 +373,16 @@ class MainScene extends Scene3D {
       ThreeMeshUI.update();
 
       this.state.localPlayer.userData.particleEmitter.tick(deltaSecs);
-      const gamepad = this.getGamepad(this.state.isHost ? 0 : 1);
+      const gamepad = this.getGamepad(0);
       if (gamepad) {
         const ax = deadzone(gamepad.axes[0]);
         const ay = deadzone(gamepad.axes[1]);
         const by = deadzone(-gamepad.axes[3]);
+        this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
+      } else {
+        const ax = this.state.keys.a ? -1 : this.state.keys.d ? 1 : 0;
+        const ay = this.state.keys.s ? 1 : this.state.keys.w ? -1 : 0;
+        const by = this.state.keys.ArrowDown ? -1 : this.state.keys.ArrowUp ? 1 : 0;
         this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
 
@@ -386,9 +408,9 @@ class MainScene extends Scene3D {
   })();
 }
 
-const renderer = new Renderer({ disableFullscreenUi: false });
+const renderer = new Renderer({ disableFullscreenUi: queryParams.has("2d") });
 //renderer.renderQuilt = true;
-//renderer.render2d = true;
+renderer.render2d = queryParams.has("2d");
 renderer.setSize = (width, height) => {
   return renderer.webglRenderer.setSize(width, height);
 };

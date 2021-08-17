@@ -1,8 +1,8 @@
 {
   "private": true,
   "scripts": {
-    "build": "npx esbuild --bundle --outfile=bundle.js index.js",
-    "dev": "npx esbuild --bundle --outfile=bundle.js --watch index.js"
+    "build": "esbuild --minify --bundle --outfile=bundle.js index.js",
+    "dev": "esbuild --bundle --outfile=bundle.js --watch index.js"
   },
   "dependencies": {
     "enable3d": "^0.23.0",
