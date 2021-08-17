@@ -427,7 +427,7 @@ Object.defineProperty(renderer, "shadowMap", {
 });
 
 PhysicsLoader(
-  "/lib",
+  "lib",
   () =>
     new Project({
       renderer,
