@@ -101,6 +101,7 @@ class MainScene extends Scene3D {
           this.physics.add.existing(this.state.remotePlayer);
           links.style.display = "none";
           e.preventDefault();
+          e.stopPropagation();
         });
       } else {
         const id = queryParams.get("id");
