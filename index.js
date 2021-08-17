@@ -66,12 +66,18 @@ class MainScene extends Scene3D {
       remoteConn: null,
       endedGame: false,
       keys: {
-        w: false,
-        s: false,
-        a: false,
-        d: false,
-        ArrowUp: false,
-        ArrowDown: false,
+        KeyW: false,
+        KeyS: false,
+        KeyA: false,
+        KeyD: false,
+        KeyR: false,
+        KeyF: false,
+        KeyI: false,
+        KeyK: false,
+        KeyJ: false,
+        KeyL: false,
+        KeyP: false,
+        Semicolon: false,
       },
     });
 
@@ -133,11 +139,14 @@ class MainScene extends Scene3D {
       });
     });
 
+    const validKeys = Object.keys(this.state.keys);
     window.addEventListener("keydown", e => {
-      this.state.keys[e.key] = true;
+      if (!validKeys.includes(e.code)) return;
+      this.state.keys[e.code] = true;
     });
     window.addEventListener("keyup", e => {
-      this.state.keys[e.key] = false;
+      if (!validKeys.includes(e.code)) return;
+      this.state.keys[e.code] = false;
     });
   }
 
@@ -380,9 +389,9 @@ class MainScene extends Scene3D {
         const by = deadzone(-gamepad.axes[3]);
         this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       } else {
-        const ax = this.state.keys.a ? -1 : this.state.keys.d ? 1 : 0;
-        const ay = this.state.keys.s ? 1 : this.state.keys.w ? -1 : 0;
-        const by = this.state.keys.ArrowDown ? -1 : this.state.keys.ArrowUp ? 1 : 0;
+        const ax = this.state.keys.KeyA ? -1 : this.state.keys.KeyD ? 1 : 0;
+        const ay = this.state.keys.KeyS ? 1 : this.state.keys.KeyW ? -1 : 0;
+        const by = this.state.keys.KeyF ? -1 : this.state.keys.KeyR ? 1 : 0;
         this.state.localPlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
       }
 
@@ -393,6 +402,11 @@ class MainScene extends Scene3D {
           const ax = deadzone(gamepad.axes[0]);
           const ay = deadzone(gamepad.axes[1]);
           const by = deadzone(-gamepad.axes[3]);
+          this.state.remotePlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
+        } else {
+          const ax = this.state.keys.KeyJ ? -1 : this.state.keys.KeyL ? 1 : 0;
+          const ay = this.state.keys.KeyK ? 1 : this.state.keys.KeyI ? -1 : 0;
+          const by = this.state.keys.Semicolon ? -1 : this.state.keys.KeyP ? 1 : 0;
           this.state.remotePlayer.body.applyCentralForce(10 * ax, 10 * by, 10 * ay);
         }
       } else {
