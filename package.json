@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "build": "esbuild --minify --bundle --outfile=bundle.js index.js",
+    "build": "esbuild --sourcemap --minify --bundle --outfile=bundle.js index.js",
     "dev": "esbuild --bundle --outfile=bundle.js --watch index.js"
   },
   "dependencies": {
